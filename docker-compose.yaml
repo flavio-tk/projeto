@@ -1,0 +1,73 @@
+version: '3.7'
+
+networks:
+  stream-net:
+    driver: bridge
+
+services:
+    postgres:
+        image: postgres:9.6
+        hostname: postgres
+        container_name: postgres
+        environment:
+            - POSTGRES_USER=airflow
+            - POSTGRES_PASSWORD=airflow
+            - POSTGRES_DB=airflow
+            - PGDATA=/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD", "pg_isready", "-U", "airflow"]
+            interval: 5s
+            retries: 5
+        networks:
+            - stream-net
+        volumes:
+            - ./database:/var/lib/postgresql/data
+
+    airflow:
+        image: ferrettivinicius/airflow-aula-fia:latest
+        hostname: airflow
+        container_name: airflow
+        depends_on:
+            postgres:
+                condition: service_healthy
+        volumes:
+            - ./dags:/usr/local/airflow/dags
+            - ./jars:/usr/local/airflow/jars
+            - ./config:/usr/local/airflow/config
+            - ./plugins:/usr/local/airflow/plugins
+        networks:
+            - stream-net
+        ports:
+            - 8080:8080
+
+    minio:
+        image: minio/minio:latest
+        hostname: minio
+        container_name: minio
+        environment:
+          - MINIO_ROOT_USER=aulafia 
+          - MINIO_ROOT_PASSWORD=aulafia@123
+        volumes:
+          - ./minio:/data
+        networks:
+          - stream-net
+        ports:
+          - 9000:9000
+          - 9001:9001
+        command: server /data --console-address ":9001" 
+
+    nifi:
+        image: apache/nifi:1.15.3
+        restart: always
+        hostname: nifi
+        container_name: nifi
+        ports:
+          - 8443:8443
+        environment:
+          - NIFI_WEB_HTTP_PORT=8443
+          - NIFI_CLUSTER_IS_NODE=false
+          - NIFI_CLUSTER_NODE_PROTOCOL_PORT=8082
+          - NIFI_ZK_CONNECT_STRING=zookeeper:2181
+          - NIFI_ELECTION_MAX_WAIT=1 min
+        networks:
+          - stream-net
